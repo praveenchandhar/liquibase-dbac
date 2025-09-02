@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.company</groupId>
+    <artifactId>product-service-db</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>Product Service Database</name>
+    <description>MongoDB schema migrations and seed data for Product Service</description>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+        <!-- Versions -->
+        <liquibase.version>4.33.0</liquibase.version>
+        <liquibase-mongodb.version>4.33.0</liquibase-mongodb.version>
+        <mongodb-driver.version>4.11.1</mongodb-driver.version>
+        <slf4j.version>2.0.9</slf4j.version>
+        <snakeyaml.version>1.33</snakeyaml.version>
+        <jackson.version>2.15.2</jackson.version>
+    </properties>
+
+    <dependencies>
+        <!-- Liquibase MongoDB Extension -->
+        <dependency>
+            <groupId>org.liquibase.ext</groupId>
+            <artifactId>liquibase-mongodb</artifactId>
+            <version>${liquibase-mongodb.version}</version>
+        </dependency>
+        
+        <!-- MongoDB Driver Dependencies -->
+        <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>mongodb-driver-sync</artifactId>
+            <version>${mongodb-driver.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>mongodb-driver-core</artifactId>
+            <version>${mongodb-driver.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>bson</artifactId>
+            <version>${mongodb-driver.version}</version>
+        </dependency>
+        
+        <!-- YAML Support -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>${snakeyaml.version}</version>
+        </dependency>
+        
+        <!-- Jackson for JSON processing -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        
+        <!-- Logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Maven Compiler Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>11</source>
+                    <target>11</target>
+                </configuration>
+            </plugin>
+
+            <!-- Liquibase Plugin -->
+            <plugin>
+                <groupId>org.liquibase</groupId>
+                <artifactId>liquibase-maven-plugin</artifactId>
+                <version>${liquibase.version}</version>
+                <configuration>
+                    <propertyFile>database/config/liquibase.yaml</propertyFile>
+                    <changeLogFile>database/mongodb/db/changelog/master.changelog.yaml</changeLogFile>
+                    <verbose>true</verbose>
+                    <logging>info</logging>
+                    <outputDefaultSchema>false</outputDefaultSchema>
+                    <outputDefaultCatalog>false</outputDefaultCatalog>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.liquibase.ext</groupId>
+                        <artifactId>liquibase-mongodb</artifactId>
+                        <version>${liquibase-mongodb.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.mongodb</groupId>
+                        <artifactId>mongodb-driver-sync</artifactId>
+                        <version>${mongodb-driver.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.mongodb</groupId>
+                        <artifactId>mongodb-driver-core</artifactId>
+                        <version>${mongodb-driver.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.mongodb</groupId>
+                        <artifactId>bson</artifactId>
+                        <version>${mongodb-driver.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <!-- Copy dependencies for CLI usage -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Development Environment -->
+        <profile>
+            <id>environment-dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <liquibase.url>mongodb://localhost:27017/product_service_dev</liquibase.url>
+                <liquibase.contexts>dev,common</liquibase.contexts>
+                <liquibase.labels>dev,schema,seed</liquibase.labels>
+                <environment.name>dev</environment.name>
+            </properties>
+        </profile>
+        
+        <!-- Staging Environment -->
+        <profile>
+            <id>environment-stage</id>
+            <properties>
+                <liquibase.url>mongodb://stage-mongodb:27017/product_service_stage</liquibase.url>
+                <liquibase.contexts>stage,common</liquibase.contexts>
+                <liquibase.labels>stage,schema,seed</liquibase.labels>
+                <environment.name>stage</environment.name>
+            </properties>
+        </profile>
+        
+        <!-- Pre-Production Environment -->
+        <profile>
+            <id>environment-pre-prod</id>
+            <properties>
+                <liquibase.url>mongodb://preprod-mongodb:27017/product_service_preprod</liquibase.url>
+                <liquibase.contexts>pre-prod,common</liquibase.contexts>
+                <liquibase.labels>pre-prod,schema,seed</liquibase.labels>
+                <environment.name>pre-prod</environment.name>
+            </properties>
+        </profile>
+        
+        <!-- Production Environment -->
+        <profile>
+            <id>environment-prod</id>
+            <properties>
+                <liquibase.url>mongodb://prod-mongodb:27017/product_service_prod</liquibase.url>
+                <liquibase.contexts>prod,common</liquibase.contexts>
+                <liquibase.labels>prod,schema</liquibase.labels>
+                <environment.name>prod</environment.name>
+            </properties>
+        </profile>
+
+        <!-- Local Development with Docker -->
+        <profile>
+            <id>local-docker</id>
+            <properties>
+                <liquibase.url>mongodb://admin:password123@localhost:27017/product_service_dev?authSource=admin</liquibase.url>
+                <liquibase.contexts>dev,common,local</liquibase.contexts>
+                <liquibase.labels>dev,schema,seed,local</liquibase.labels>
+                <environment.name>local</environment.name>
+            </properties>
+        </profile>
+    </profiles>
+</project>
