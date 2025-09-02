@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - includeAll:
+      path: ../base/2025/2025.08.1.x/
+  - includeAll:
+      path: ../seed/common/
+  - includeAll:
+      path: ../seed/dev/
+  - includeAll:
+      path: ../local/2025/2025.08.1.x/
