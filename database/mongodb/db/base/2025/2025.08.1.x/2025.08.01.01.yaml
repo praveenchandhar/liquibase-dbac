@@ -1,22 +1,26 @@
 databaseChangeLog:
   - changeSet:
-      id: 2025.08.01.01
+      id: 2025.08.01.01-pp-common
       author: database-team
+      comment: "Create collections in pp_common_db_stage"
       changes:
-        - runCommand:
-            command: |
-              use('pp_common_db_stage');
-              
-              db.createCollection("testing");
-              
-              db.createCollection("products");
-              
-              db.products.createIndex({ "sku": 1 }, { unique: true });
-              
-              use('order_service_dev');
-              
-              db.createCollection("orders");
-              
-              db.orders.createIndex({ "orderNumber": 1 }, { unique: true });
-              
-              print("Collections created successfully");
+        - createCollection:
+            collectionName: testing
+        - createCollection:
+            collectionName: products
+        - createIndex:
+            collectionName: products
+            keys: '{ "sku": 1 }'
+            options: '{ "unique": true, "name": "idx_products_sku" }'
+
+  - changeSet:
+      id: 2025.08.01.01-order-service
+      author: database-team
+      comment: "Create collections in order_service_dev"
+      changes:
+        - createCollection:
+            collectionName: orders
+        - createIndex:
+            collectionName: orders
+            keys: '{ "orderNumber": 1 }'
+            options: '{ "unique": true, "name": "idx_orders_number" }'
