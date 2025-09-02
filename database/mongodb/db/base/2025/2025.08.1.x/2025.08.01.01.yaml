@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2025.08.01.01
+      author: database-team
+      changes:
+        - mongoFile:
+            path: scripts/2025.08.01.01.js
