@@ -49,6 +49,8 @@
                 <configuration>
                     <propertyFile>database/config/liquibase.properties</propertyFile>
                     <changeLogFile>database/mongodb/db/changelog/master.changelog.yaml</changeLogFile>
+                    <driver>liquibase.ext.mongodb.database.MongoLiquibaseDatabase</driver>
+                    <url>mongodb://praveents:EkafqheY5FzPgwyK@127.0.0.1:27017/?authSource=admin</url>
                 </configuration>
                 <dependencies>
                     <dependency>
@@ -59,6 +61,16 @@
                     <dependency>
                         <groupId>org.mongodb</groupId>
                         <artifactId>mongodb-driver-sync</artifactId>
+                        <version>${mongodb-driver.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.mongodb</groupId>
+                        <artifactId>mongodb-driver-core</artifactId>
+                        <version>${mongodb-driver.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.mongodb</groupId>
+                        <artifactId>bson</artifactId>
                         <version>${mongodb-driver.version}</version>
                     </dependency>
                 </dependencies>
