@@ -18,14 +18,11 @@
     </properties>
 
     <dependencies>
-        <!-- Liquibase MongoDB Extension (OSS with Pro License) -->
         <dependency>
             <groupId>org.liquibase.ext</groupId>
             <artifactId>liquibase-mongodb</artifactId>
             <version>${liquibase-mongodb.version}</version>
         </dependency>
-        
-        <!-- MongoDB Driver Dependencies -->
         <dependency>
             <groupId>org.mongodb</groupId>
             <artifactId>mongodb-driver-sync</artifactId>
