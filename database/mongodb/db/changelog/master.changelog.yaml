@@ -1,5 +1,4 @@
 databaseChangeLog:
   # Base Schema Changes (DDL) - Only this for testing
   - includeAll:
-      path: database/mongodb/db/base/2025/2025.08.1.x/
-      
+      path: ../base/2025/2025.08.1.x/
