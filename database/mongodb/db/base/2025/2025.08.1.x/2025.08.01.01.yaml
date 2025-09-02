@@ -3,5 +3,20 @@ databaseChangeLog:
       id: 2025.08.01.01
       author: database-team
       changes:
-        - mongoFile:
-            path: scripts/2025.08.01.01.js
+        - runCommand:
+            command: |
+              use('pp_common_db_stage');
+              
+              db.createCollection("testing");
+              
+              db.createCollection("products");
+              
+              db.products.createIndex({ "sku": 1 }, { unique: true });
+              
+              use('order_service_dev');
+              
+              db.createCollection("orders");
+              
+              db.orders.createIndex({ "orderNumber": 1 }, { unique: true });
+              
+              print("Collections created successfully");
