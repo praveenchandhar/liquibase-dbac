@@ -1,4 +1,4 @@
 databaseChangeLog:
-  # Base Schema Changes (DDL) - Only this for testing
+  # Use absolute path from project root instead of relative path
   - includeAll:
-      path: ../base/2025/2025.08.1.x/
+      path: database/mongodb/db/base/2025/2025.08.1.x/
