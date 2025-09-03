@@ -27,6 +27,7 @@ This project implements a Database-as-Code framework using Liquibase open-source
 - ✅ **CI/CD integration** ready
 
 ## 📁 Repository Structure
+
 product-service-repo/
 ├── database/
 │ └── mongodb/
@@ -48,6 +49,7 @@ product-service-repo/
 │ └── liquibase.yaml # YAML configuration
 ├── pom.xml # Maven configuration
 └── README.md # This file
+
 
 
 
