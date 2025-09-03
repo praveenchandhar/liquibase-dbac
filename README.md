@@ -26,32 +26,6 @@ This project implements a Database-as-Code framework using Liquibase open-source
 - ✅ **Rollback capabilities** for safe deployments
 - ✅ **CI/CD integration** ready
 
-## 📁 Repository Structure
-
-product-service-repo/
-├── database/
-│ └── mongodb/
-│ └── db/
-│ ├── changelog/
-│ │ └── master.changelog.yaml # Master changelog file
-│ ├── base/ # Schema migrations (DDL)
-│ │ └── 2025/
-│ │ └── 2025.08.1.x/
-│ │ └── 2025.08.01.01.yaml # Individual changesets
-│ ├── seed/ # Seed data (optional)
-│ │ ├── common/
-│ │ ├── dev/
-│ │ ├── stage/
-│ │ └── pre-prod/
-│ └── local/ # Local developer overrides
-│ └── config/
-│ ├── liquibase.properties # Liquibase configuration
-│ └── liquibase.yaml # YAML configuration
-├── pom.xml # Maven configuration
-└── README.md # This file
-
-
-
 
 ## 🔧 Prerequisites
 
