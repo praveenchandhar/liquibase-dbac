@@ -2,19 +2,6 @@
 
 A comprehensive Database-as-Code solution for MongoDB using Liquibase free version, enabling automated database change management across all environments.
 
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Repository Structure](#repository-structure)
-- [Prerequisites](#prerequisites)
-- [Setup Instructions](#setup-instructions)
-- [Writing YAML Changesets](#writing-yaml-changesets)
-- [Available Operations](#available-operations)
-- [Sample Queries](#sample-queries)
-- [Best Practices](#best-practices)
-- [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
-
 ## 🎯 Overview
 
 This project implements a Database-as-Code framework using Liquibase open-source MongoDB extension. It provides:
@@ -31,7 +18,7 @@ This project implements a Database-as-Code framework using Liquibase open-source
 
 - **Java 11+** - Required for Liquibase
 - **Maven 3.6+** - Build tool
-- **MongoDB 5.0+** - Target database
+- **MongoDB 7.0+** - Target database
 - **Git** - Version control
 
 ## 🚀 Setup Instructions
