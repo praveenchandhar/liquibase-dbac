@@ -1,4 +1,0 @@
-databaseChangeLog:
-  # Use absolute path from project root instead of relative path
-  - includeAll:
-      path: database/mongodb/db/base/2025/2025.08.1.x/
