@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Liquibase Runner Script for YAML Changesets
-set -e  # Exit on error (removed 'u' to avoid unbound variable issues)
+set -e
 
 # Colors for output
 RED='\033[0;31m'
@@ -17,7 +17,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # MongoDB connection base
 MONGO_BASE="mongodb+srv://praveenchandharts:kixIUsDWGd3n6w5S@praveen-mongodb-github.lhhwdqa.mongodb.net"
 
-# Valid databases (using simple approach instead of associative array)
+# Valid databases
 VALID_DATABASES="sample_mflix liquibase_test liquibase_test_new"
 
 # Functions
@@ -96,39 +96,7 @@ fi
 
 print_status "Using changeset: $CHANGESET_FILE"
 
-# Setup classpath
-LIB_DIR="$PROJECT_ROOT/lib"
-CLASSPATH=""
-
-if [ -d "$LIB_DIR" ]; then
-    # Add all JARs from lib directory
-    for jar in "$LIB_DIR"/*.jar; do
-        if [ -f "$jar" ]; then
-            if [ -z "$CLASSPATH" ]; then
-                CLASSPATH="$jar"
-            else
-                CLASSPATH="$CLASSPATH:$jar"
-            fi
-        fi
-    done
-fi
-
-# Check if we have Liquibase installed
-if command -v liquibase &> /dev/null; then
-    print_info "Using system Liquibase installation"
-    LIQUIBASE_CMD="liquibase"
-elif [ -n "$CLASSPATH" ]; then
-    print_info "Using JAR-based Liquibase"
-    LIQUIBASE_CMD="java -cp $CLASSPATH liquibase.integration.commandline.Main"
-else
-    print_error "Neither system Liquibase nor required JARs found!"
-    print_info "Please either:"
-    print_info "1. Install Liquibase system-wide, or"
-    print_info "2. Download JARs to $LIB_DIR/"
-    exit 1
-fi
-
-# Build MongoDB URL
+# Build MongoDB URL (using proper MongoDB URL format)
 MONGO_URL="${MONGO_BASE}/${DATABASE}?retryWrites=true&w=majority&tls=true"
 
 print_info "MongoDB URL: ${MONGO_BASE}/${DATABASE}?..."
@@ -140,10 +108,11 @@ echo "===================="
 head -20 "$CHANGESET_FILE"
 echo "===================="
 
-# Execute Liquibase
+# Execute Liquibase with system installation
 print_info "Executing Liquibase $COMMAND..."
 
-$LIQUIBASE_CMD \
+# Use system Liquibase directly (no custom classpath to avoid conflicts)
+liquibase \
     --url="$MONGO_URL" \
     --changeLogFile="$CHANGESET_FILE" \
     --contexts="$DATABASE" \
