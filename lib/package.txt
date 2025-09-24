@@ -1,0 +1,7 @@
+# MongoDB Driver
+curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.11.1/mongodb-driver-sync-4.11.1.jar"
+curl -L -O "https://repo1.maven.org/maven2/org/mongodb/bson/4.11.1/bson-4.11.1.jar"
+curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-core/4.11.1/mongodb-driver-core-4.11.1.jar"
+
+# Liquibase MongoDB Extension
+curl -L -O "https://github.com/liquibase/liquibase-mongodb/releases/download/v4.24.0/liquibase-mongodb-4.24.0.jar"
