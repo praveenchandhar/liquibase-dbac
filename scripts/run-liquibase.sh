@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Liquibase Runner Script for YAML Changesets
-set -euo pipefail
+set -e  # Exit on error (removed 'u' to avoid unbound variable issues)
 
 # Colors for output
 RED='\033[0;31m'
@@ -13,17 +13,12 @@ NC='\033[0m'
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-LIQUIBASE_HOME="${LIQUIBASE_HOME:-/opt/liquibase}"
-
-# Database configurations
-declare -A DATABASES=(
-    ["sample_mflix"]="sample_mflix"
-    ["liquibase_test"]="liquibase_test"
-    ["liquibase_test_new"]="liquibase_test_new"
-)
 
 # MongoDB connection base
 MONGO_BASE="mongodb+srv://praveenchandharts:kixIUsDWGd3n6w5S@praveen-mongodb-github.lhhwdqa.mongodb.net"
+
+# Valid databases (using simple approach instead of associative array)
+VALID_DATABASES="sample_mflix liquibase_test liquibase_test_new"
 
 # Functions
 print_status() { echo -e "${GREEN}✅ $1${NC}"; }
@@ -65,9 +60,9 @@ if [[ "$COMMAND" != "status" && "$COMMAND" != "update" ]]; then
 fi
 
 # Validate database
-if [[ ! -v DATABASES[$DATABASE] ]]; then
+if [[ ! " $VALID_DATABASES " =~ " $DATABASE " ]]; then
     print_error "Invalid database: $DATABASE"
-    echo "Valid databases: ${!DATABASES[*]}"
+    echo "Valid databases: $VALID_DATABASES"
     exit 1
 fi
 
@@ -103,27 +98,41 @@ print_status "Using changeset: $CHANGESET_FILE"
 
 # Setup classpath
 LIB_DIR="$PROJECT_ROOT/lib"
+CLASSPATH=""
+
 if [ -d "$LIB_DIR" ]; then
-    CLASSPATH="$(find "$LIB_DIR" -name "*.jar" | tr '\n' ':')"
+    # Add all JARs from lib directory
+    for jar in "$LIB_DIR"/*.jar; do
+        if [ -f "$jar" ]; then
+            if [ -z "$CLASSPATH" ]; then
+                CLASSPATH="$jar"
+            else
+                CLASSPATH="$CLASSPATH:$jar"
+            fi
+        fi
+    done
+fi
+
+# Check if we have Liquibase installed
+if command -v liquibase &> /dev/null; then
+    print_info "Using system Liquibase installation"
+    LIQUIBASE_CMD="liquibase"
+elif [ -n "$CLASSPATH" ]; then
+    print_info "Using JAR-based Liquibase"
+    LIQUIBASE_CMD="java -cp $CLASSPATH liquibase.integration.commandline.Main"
 else
-    print_warning "Local lib directory not found, using system classpath"
-    CLASSPATH=""
+    print_error "Neither system Liquibase nor required JARs found!"
+    print_info "Please either:"
+    print_info "1. Install Liquibase system-wide, or"
+    print_info "2. Download JARs to $LIB_DIR/"
+    exit 1
 fi
-
-# Add Liquibase to classpath if available
-if [ -d "$LIQUIBASE_HOME" ]; then
-    LIQUIBASE_CLASSPATH="$(find "$LIQUIBASE_HOME" -name "*.jar" | tr '\n' ':')"
-    CLASSPATH="$CLASSPATH:$LIQUIBASE_CLASSPATH"
-fi
-
-export CLASSPATH
 
 # Build MongoDB URL
 MONGO_URL="${MONGO_BASE}/${DATABASE}?retryWrites=true&w=majority&tls=true"
-CONTEXT="${DATABASES[$DATABASE]}"
 
 print_info "MongoDB URL: ${MONGO_BASE}/${DATABASE}?..."
-print_info "Context: $CONTEXT"
+print_info "Context: $DATABASE"
 
 # Preview changeset
 print_info "Changeset preview:"
@@ -134,10 +143,10 @@ echo "===================="
 # Execute Liquibase
 print_info "Executing Liquibase $COMMAND..."
 
-java -cp "$CLASSPATH" liquibase.integration.commandline.Main \
+$LIQUIBASE_CMD \
     --url="$MONGO_URL" \
     --changeLogFile="$CHANGESET_FILE" \
-    --contexts="$CONTEXT" \
+    --contexts="$DATABASE" \
     --logLevel="INFO" \
     "$COMMAND"
 
