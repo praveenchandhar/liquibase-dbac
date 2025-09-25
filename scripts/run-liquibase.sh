@@ -139,7 +139,7 @@ fi
 
 # List JAR files for debugging
 print_info "Available JARs:"
-find "$LIB_DIR" -name "*.jar" -exec basename {} \;
+find "$LIB_DIR" -name "*.jar" -exec basename {} \; | sort
 
 # MongoDB connection string
 MONGO_URL="${MONGO_BASE}/${DATABASE}?retryWrites=true&w=majority&tls=true"
@@ -156,10 +156,9 @@ echo "===================="
 # Try multiple approaches for maximum compatibility
 print_info "Executing Liquibase $COMMAND using enhanced JAR approach..."
 
-# Approach 1: Enhanced Java module arguments (what worked locally)
-print_info "Trying Approach 1: Enhanced module arguments..."
+# Approach 1: Java 21 compatible with explicit driver class
+print_info "Trying Approach 1: Java 21 compatible with explicit driver..."
 java \
-    --illegal-access=permit \
     --add-opens java.base/java.lang=ALL-UNNAMED \
     --add-opens java.base/java.util=ALL-UNNAMED \
     --add-opens java.base/java.net=ALL-UNNAMED \
@@ -171,6 +170,7 @@ java \
     -Dliquibase.databaseClass=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
     -cp "lib/*" \
     liquibase.integration.commandline.Main \
+    --driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
     --url="$MONGO_URL" \
     --changeLogFile="$CHANGESET_FILE" \
     --contexts="$DATABASE" \
@@ -181,13 +181,14 @@ exit_code=$?
 
 # If Approach 1 fails, try Approach 2
 if [ $exit_code -ne 0 ]; then
-    print_warning "Approach 1 failed, trying Approach 2: Minimal module arguments..."
+    print_warning "Approach 1 failed, trying Approach 2: Simplified Java 21 approach..."
     
     java \
         --add-opens java.base/java.lang=ALL-UNNAMED \
         --add-opens java.sql/java.sql=ALL-UNNAMED \
         -cp "lib/*" \
         liquibase.integration.commandline.Main \
+        --driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
         --url="$MONGO_URL" \
         --changeLogFile="$CHANGESET_FILE" \
         --contexts="$DATABASE" \
@@ -199,19 +200,30 @@ fi
 
 # If Approach 2 fails, try Approach 3
 if [ $exit_code -ne 0 ]; then
-    print_warning "Approach 2 failed, trying Approach 3: Legacy mode..."
+    print_warning "Approach 2 failed, trying Approach 3: Properties file approach..."
+    
+    # Create temporary properties file
+    cat > liquibase-temp.properties << EOF
+url=$MONGO_URL
+changeLogFile=$CHANGESET_FILE
+contexts=$DATABASE
+logLevel=INFO
+driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase
+classpath=lib/*
+EOF
     
     java \
-        -Djava.system.class.loader=liquibase.integration.commandline.LiquibaseCommandLineClassLoader \
+        --add-opens java.base/java.lang=ALL-UNNAMED \
+        --add-opens java.sql/java.sql=ALL-UNNAMED \
         -cp "lib/*" \
         liquibase.integration.commandline.Main \
-        --url="$MONGO_URL" \
-        --changeLogFile="$CHANGESET_FILE" \
-        --contexts="$DATABASE" \
-        --logLevel="INFO" \
+        --defaultsFile=liquibase-temp.properties \
         "$COMMAND"
     
     exit_code=$?
+    
+    # Cleanup
+    rm -f liquibase-temp.properties
 fi
 
 print_info "Liquibase execution completed with exit code: $exit_code"
