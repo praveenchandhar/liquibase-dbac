@@ -73,7 +73,6 @@ java \
     --add-opens=java.sql/java.sql=ALL-UNNAMED \
     --add-exports=java.base/sun.nio.ch=ALL-UNNAMED \
     --add-exports=java.sql/java.sql=ALL-UNNAMED \
-    -Djava.security.manager=allow \
     -cp "$CLASSPATH" \
     liquibase.integration.commandline.Main \
     --url="${MONGO_CONNECTION_BASE}/${database}?retryWrites=true&w=majority&tls=true" \
