@@ -5,7 +5,7 @@ pipeline {
         string(
             name: 'BRANCH',
             defaultValue: 'main',
-            description: 'Git branch to deploy from'
+            description: 'Git branch to deploy from (and commit back to)'
         )
         choice(
             name: 'COMMAND',
@@ -32,70 +32,87 @@ pipeline {
             defaultValue: false,
             description: 'Run status only'
         )
+        booleanParam(
+            name: 'COMMIT_RESULTS',
+            defaultValue: false,
+            description: 'Commit deployment results back to the same branch'
+        )
     }
     
     environment {
         MONGO_CONNECTION_BASE = credentials('mongo-connection-string')
         JAVA_OPTS = '--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED'
+        DEPLOYMENT_TIMESTAMP = sh(script: 'date "+%Y-%m-%d_%H-%M-%S"', returnStdout: true).trim()
     }
     
     stages {
         stage('Checkout') {
             steps {
-                script {
-                    echo "🔄 Checking out branch: ${params.BRANCH}"
-                    git branch: params.BRANCH, url: 'https://github.com/praveenchandhar/liquibase-dbac.git'
-                }
+                echo "🔄 Checking out branch: ${params.BRANCH}"
+                
+                // Checkout with credentials for push capability
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: params.BRANCH]],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/praveenchandhar/liquibase-dbac.git',
+                        credentialsId: 'github-token'
+                    ]]
+                ])
+                
                 echo "✅ Repository checked out successfully"
-                sh 'ls -la'
+                echo "📋 Current branch: ${params.BRANCH}"
+                
+                script {
+                    // Store current commit for deployment tracking
+                    env.CURRENT_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.CURRENT_COMMIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                }
+                
+                echo "📝 Current commit: ${env.CURRENT_COMMIT_SHORT}"
+                sh 'git log --oneline -3'
             }
         }
         
         stage('Setup Dependencies') {
             steps {
+                echo "🔧 Setting up Liquibase dependencies..."
+                
                 script {
-                    echo "🔧 Setting up Liquibase dependencies..."
-                    
-                    // Check if setup script exists
                     if (fileExists('scripts/setup-dependencies.sh')) {
                         sh 'chmod +x scripts/setup-dependencies.sh'
                         sh './scripts/setup-dependencies.sh'
                     } else {
-                        echo "⚠️  setup-dependencies.sh not found, creating lib directory manually"
-                        sh 'mkdir -p lib'
-                        // Download essential JARs manually
                         sh '''
+                            mkdir -p lib
                             cd lib
-                            curl -L -O "https://github.com/liquibase/liquibase/releases/download/v4.24.0/liquibase-core-4.24.0.jar" || echo "Failed to download liquibase-core"
-                            curl -L -O "https://github.com/liquibase/liquibase-mongodb/releases/download/v4.24.0/liquibase-mongodb-4.24.0.jar" || echo "Failed to download liquibase-mongodb"
-                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.11.1/mongodb-driver-sync-4.11.1.jar" || echo "Failed to download mongodb-driver-sync"
-                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/bson/4.11.1/bson-4.11.1.jar" || echo "Failed to download bson"
-                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-core/4.11.1/mongodb-driver-core-4.11.1.jar" || echo "Failed to download mongodb-driver-core"
-                            curl -L -O "https://repo1.maven.org/maven2/info/picocli/picocli/4.6.3/picocli-4.6.3.jar" || echo "Failed to download picocli"
-                            curl -L -O "https://repo1.maven.org/maven2/org/yaml/snakeyaml/1.33/snakeyaml-1.33.jar" || echo "Failed to download snakeyaml"
+                            
+                            echo "📥 Downloading Liquibase JARs..."
+                            curl -L -O "https://github.com/liquibase/liquibase/releases/download/v4.24.0/liquibase-core-4.24.0.jar"
+                            curl -L -O "https://github.com/liquibase/liquibase-mongodb/releases/download/v4.24.0/liquibase-mongodb-4.24.0.jar"
+                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.11.1/mongodb-driver-sync-4.11.1.jar"
+                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/bson/4.11.1/bson-4.11.1.jar"
+                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-core/4.11.1/mongodb-driver-core-4.11.1.jar"
+                            curl -L -O "https://repo1.maven.org/maven2/info/picocli/picocli/4.6.3/picocli-4.6.3.jar"
+                            curl -L -O "https://repo1.maven.org/maven2/org/yaml/snakeyaml/1.33/snakeyaml-1.33.jar"
                             cd ..
                         '''
                     }
-                    
-                    echo "📦 Verifying JAR files:"
-                    sh 'ls -la lib/ || echo "lib directory not found"'
                 }
+                
+                echo "✅ Dependencies setup completed"
             }
         }
         
-        stage('Validate Parameters') {
+        stage('Pre-Deployment Status') {
             steps {
+                echo "🔍 Checking current deployment status..."
+                
                 script {
-                    echo "🔍 Validating parameters..."
-                    echo "Branch: ${params.BRANCH}"
-                    echo "Command: ${params.COMMAND}"
-                    echo "Database: ${params.DATABASE}"
-                    echo "Environment: ${params.ENVIRONMENT}"
-                    echo "Version/File: ${params.VERSION_OR_FILE}"
-                    echo "Dry Run: ${params.DRY_RUN}"
-                    
-                    echo "📁 Repository contents:"
-                    sh 'find . -name "*.yaml" -type f | head -10 || echo "No YAML files found"'
+                    if (fileExists('scripts/run-liquibase.sh')) {
+                        sh 'chmod +x scripts/run-liquibase.sh'
+                        sh "./scripts/run-liquibase.sh status ${params.DATABASE} '${params.VERSION_OR_FILE}'"
+                    }
                 }
             }
         }
@@ -104,22 +121,165 @@ pipeline {
             steps {
                 script {
                     def actualCommand = params.DRY_RUN ? 'status' : params.COMMAND
-                    echo "🚀 Executing Liquibase ${actualCommand}..."
+                    echo "🚀 Executing Liquibase ${actualCommand} on branch: ${params.BRANCH}"
                     
                     if (params.DRY_RUN && params.COMMAND == 'update') {
                         echo "⚠️  DRY_RUN enabled: Running status instead of update"
                     }
                     
-                    // Check if run-liquibase.sh exists
                     if (fileExists('scripts/run-liquibase.sh')) {
                         sh 'chmod +x scripts/run-liquibase.sh'
-                        sh """
-                            ./scripts/run-liquibase.sh ${actualCommand} ${params.DATABASE} "${params.VERSION_OR_FILE}"
-                        """
+                        sh "./scripts/run-liquibase.sh ${actualCommand} ${params.DATABASE} '${params.VERSION_OR_FILE}'"
                     } else {
-                        echo "❌ scripts/run-liquibase.sh not found!"
-                        sh 'find . -name "*.sh" -type f || echo "No shell scripts found"'
-                        error("Required script not found")
+                        error("scripts/run-liquibase.sh not found!")
+                    }
+                    
+                    // Store deployment success flag
+                    env.DEPLOYMENT_SUCCESS = 'true'
+                }
+                
+                echo "✅ Liquibase execution completed successfully"
+            }
+        }
+        
+        stage('Create Deployment Record') {
+            when {
+                allOf {
+                    expression { params.COMMIT_RESULTS == true }
+                    expression { params.COMMAND == 'update' }
+                    expression { params.DRY_RUN == false }
+                    expression { env.DEPLOYMENT_SUCCESS == 'true' }
+                }
+            }
+            steps {
+                echo "📝 Creating deployment record..."
+                
+                script {
+                    // Create deployment record directory
+                    sh 'mkdir -p deployments'
+                    
+                    // Create deployment record file
+                    def deploymentRecord = """
+# Deployment Record
+
+**Timestamp:** ${env.DEPLOYMENT_TIMESTAMP}
+**Branch:** ${params.BRANCH}
+**Commit:** ${env.CURRENT_COMMIT_SHORT}
+**Database:** ${params.DATABASE}
+**Environment:** ${params.ENVIRONMENT}
+**Version/File:** ${params.VERSION_OR_FILE}
+**Jenkins Build:** ${env.BUILD_NUMBER}
+**Jenkins URL:** ${env.BUILD_URL}
+
+## Status
+✅ Successfully deployed to ${params.DATABASE}
+
+## Changes Applied
+- Applied changesets from: ${params.VERSION_OR_FILE}
+- Environment: ${params.ENVIRONMENT}
+- Execution time: ${env.DEPLOYMENT_TIMESTAMP}
+
+---
+*Auto-generated by Jenkins Pipeline*
+""".trim()
+                    
+                    writeFile file: "deployments/deployment-${env.DEPLOYMENT_TIMESTAMP}.md", text: deploymentRecord
+                    
+                    // Also update latest deployment info
+                    writeFile file: "deployments/LATEST_DEPLOYMENT.md", text: deploymentRecord
+                    
+                    echo "✅ Deployment record created"
+                }
+            }
+        }
+        
+        stage('Commit Results to Same Branch') {
+            when {
+                allOf {
+                    expression { params.COMMIT_RESULTS == true }
+                    expression { params.COMMAND == 'update' }
+                    expression { params.DRY_RUN == false }
+                    expression { env.DEPLOYMENT_SUCCESS == 'true' }
+                }
+            }
+            steps {
+                echo "💾 Committing deployment results to branch: ${params.BRANCH}"
+                
+                withCredentials([usernamePassword(credentialsId: 'github-token', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_TOKEN')]) {
+                    script {
+                        sh '''
+                            # Configure git
+                            git config user.name "Jenkins Deployment Bot"
+                            git config user.email "jenkins@yourcompany.com"
+                            
+                            # Set remote URL with token
+                            git remote set-url origin https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/praveenchandhar/liquibase-dbac.git
+                            
+                            # Add deployment files
+                            git add deployments/
+                            
+                            # Check if there are changes to commit
+                            if git diff --staged --quiet; then
+                                echo "No changes to commit"
+                            else
+                                # Commit changes
+                                git commit -m "🚀 Deployment Record: ${DEPLOYMENT_TIMESTAMP}
+                                
+                                - Database: ${DATABASE}
+                                - Environment: ${ENVIRONMENT}  
+                                - Version: ${VERSION_OR_FILE}
+                                - Branch: ${BRANCH}
+                                - Build: #${BUILD_NUMBER}"
+                                
+                                # Push to the same branch
+                                git push origin ${BRANCH}
+                                
+                                echo "✅ Deployment record committed to ${BRANCH}"
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Post-Deployment Status') {
+            when {
+                allOf {
+                    expression { params.COMMAND == 'update' }
+                    expression { params.DRY_RUN == false }
+                }
+            }
+            steps {
+                echo "🔍 Verifying deployment status..."
+                
+                script {
+                    if (fileExists('scripts/run-liquibase.sh')) {
+                        sh "./scripts/run-liquibase.sh status ${params.DATABASE} '${params.VERSION_OR_FILE}'"
+                    }
+                }
+            }
+        }
+        
+        stage('Summary') {
+            steps {
+                script {
+                    echo "📊 Deployment Summary:"
+                    echo "   Branch: ${params.BRANCH}"
+                    echo "   Command: ${params.COMMAND}"
+                    echo "   Database: ${params.DATABASE}"
+                    echo "   Environment: ${params.ENVIRONMENT}"
+                    echo "   Version/File: ${params.VERSION_OR_FILE}"
+                    echo "   Commit Results: ${params.COMMIT_RESULTS}"
+                    echo "   Timestamp: ${env.DEPLOYMENT_TIMESTAMP}"
+                    echo ""
+                    
+                    if (params.COMMAND == 'update' && !params.DRY_RUN) {
+                        echo "✅ Changes applied to ${params.DATABASE} from branch ${params.BRANCH}"
+                        if (params.COMMIT_RESULTS) {
+                            echo "📝 Deployment record committed back to ${params.BRANCH}"
+                        }
+                    } else {
+                        echo "ℹ️  Status check completed - no changes applied"
                     }
                 }
             }
@@ -128,30 +288,23 @@ pipeline {
     
     post {
         always {
-            script {
-                echo "🏁 Pipeline execution completed"
-                
-                // Archive artifacts if they exist
-                try {
-                    archiveArtifacts artifacts: 'db/**/*.yaml', allowEmptyArchive: true
-                } catch (Exception e) {
-                    echo "⚠️  Could not archive YAML files: ${e.getMessage()}"
-                }
-                
-                try {
-                    archiveArtifacts artifacts: 'liquibase-output.sql', allowEmptyArchive: true
-                } catch (Exception e) {
-                    echo "⚠️  Could not archive liquibase-output.sql: ${e.getMessage()}"
-                }
-            }
+            echo "🏁 Pipeline execution completed"
         }
         
         success {
             echo "🎉 Pipeline completed successfully!"
+            echo "📝 Branch ${params.BRANCH} processed successfully"
+            
+            script {
+                if (params.COMMIT_RESULTS && params.COMMAND == 'update' && !params.DRY_RUN) {
+                    echo "💾 Deployment record committed to ${params.BRANCH}"
+                }
+            }
         }
         
         failure {
             echo "❌ Pipeline failed!"
+            echo "🔍 Check the logs for details"
         }
     }
 }
