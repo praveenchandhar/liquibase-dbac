@@ -57,14 +57,18 @@ pipeline {
             }
         }
         
-        stage('Ensure Docker') {
+        stage('Setup Dependencies') {
             steps {
-                echo "🐳 Checking Docker availability..."
+                echo "🔧 Setting up Liquibase dependencies..."
                 script {
-                    sh "docker --version"
-                    sh "docker-compose --version"
+                    if (fileExists('scripts/setup-dependencies.sh')) {
+                        sh "chmod +x scripts/setup-dependencies.sh"
+                        sh "./scripts/setup-dependencies.sh"
+                    } else {
+                        error "setup-dependencies.sh script not found!"
+                    }
                 }
-                echo "✅ Docker is available"
+                echo "✅ Dependencies setup completed"
             }
         }
         
@@ -72,11 +76,11 @@ pipeline {
             steps {
                 echo "🔍 Checking current deployment status..."
                 script {
-                    if (fileExists('scripts/run-liquibase-docker.sh')) {
-                        sh "chmod +x scripts/run-liquibase-docker.sh"
-                        sh "./scripts/run-liquibase-docker.sh status ${params.DATABASE} ${params.VERSION_OR_FILE} ${params.ENVIRONMENT}"
+                    if (fileExists('scripts/run-liquibase.sh')) {
+                        sh "chmod +x scripts/run-liquibase.sh"
+                        sh "./scripts/run-liquibase.sh status ${params.DATABASE} ${params.VERSION_OR_FILE} ${params.ENVIRONMENT}"
                     } else {
-                        error "Docker Liquibase script not found!"
+                        error "run-liquibase.sh script not found!"
                     }
                 }
             }
@@ -89,9 +93,64 @@ pipeline {
             steps {
                 echo "🚀 Executing Liquibase deployment..."
                 script {
-                    sh "./scripts/run-liquibase-docker.sh update ${params.DATABASE} ${params.VERSION_OR_FILE} ${params.ENVIRONMENT}"
+                    sh "./scripts/run-liquibase.sh update ${params.DATABASE} ${params.VERSION_OR_FILE} ${params.ENVIRONMENT}"
                 }
                 echo "✅ Liquibase deployment completed"
+            }
+        }
+        
+        stage('Create Deployment Record') {
+            when {
+                expression { params.COMMAND == 'update' }
+            }
+            steps {
+                echo "📝 Creating deployment record..."
+                script {
+                    def deploymentRecord = """
+# Deployment Record
+- **Date**: ${env.BUILD_TIMESTAMP}
+- **Branch**: ${params.BRANCH}
+- **Commit**: ${env.SHORT_COMMIT}
+- **Command**: ${params.COMMAND}
+- **Database**: ${params.DATABASE}
+- **Version/File**: ${params.VERSION_OR_FILE}
+- **Environment**: ${params.ENVIRONMENT}
+- **Status**: SUCCESS
+"""
+                    writeFile file: "deployment-${env.BUILD_TIMESTAMP}.md", text: deploymentRecord
+                    echo "📄 Deployment record created: deployment-${env.BUILD_TIMESTAMP}.md"
+                }
+            }
+        }
+        
+        stage('Commit Results to Same Branch') {
+            when {
+                expression { params.COMMAND == 'update' }
+            }
+            steps {
+                echo "📤 Committing deployment results back to branch: ${params.BRANCH}"
+                script {
+                    try {
+                        sh """
+                            git config --global user.email "jenkins@praveenchandhar.com"
+                            git config --global user.name "Jenkins CI"
+                            git add deployment-${env.BUILD_TIMESTAMP}.md
+                            git commit -m "📈 Deployment completed: ${params.DATABASE} - ${env.BUILD_TIMESTAMP}
+                            
+                            - Command: ${params.COMMAND}
+                            - Database: ${params.DATABASE}
+                            - Version/File: ${params.VERSION_OR_FILE}
+                            - Environment: ${params.ENVIRONMENT}
+                            - Commit: ${env.SHORT_COMMIT}"
+                            
+                            git push origin HEAD:${params.BRANCH}
+                        """
+                        echo "✅ Deployment results committed to branch: ${params.BRANCH}"
+                    } catch (Exception e) {
+                        echo "⚠️ Could not commit deployment results: ${e.getMessage()}"
+                        echo "This is not critical, deployment was successful"
+                    }
+                }
             }
         }
         
@@ -102,8 +161,21 @@ pipeline {
             steps {
                 echo "📊 Checking post-deployment status..."
                 script {
-                    sh "./scripts/run-liquibase-docker.sh status ${params.DATABASE} ${params.VERSION_OR_FILE} ${params.ENVIRONMENT}"
+                    sh "./scripts/run-liquibase.sh status ${params.DATABASE} ${params.VERSION_OR_FILE} ${params.ENVIRONMENT}"
                 }
+            }
+        }
+        
+        stage('Summary') {
+            steps {
+                echo "📋 Deployment Summary:"
+                echo "   • Command: ${params.COMMAND}"
+                echo "   • Database: ${params.DATABASE}"
+                echo "   • Version/File: ${params.VERSION_OR_FILE}"
+                echo "   • Environment: ${params.ENVIRONMENT}"
+                echo "   • Branch: ${params.BRANCH}"
+                echo "   • Commit: ${env.SHORT_COMMIT}"
+                echo "   • Status: ✅ SUCCESS"
             }
         }
     }
@@ -120,6 +192,7 @@ pipeline {
         
         success {
             echo "✅ Pipeline completed successfully!"
+            echo "🎉 Liquibase ${params.COMMAND} executed for ${params.DATABASE}"
         }
     }
 }
