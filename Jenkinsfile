@@ -1,5 +1,9 @@
 pipeline {
     agent any
+
+    tools {
+        jdk 'Java 11'
+    }
     
     parameters {
         string(
