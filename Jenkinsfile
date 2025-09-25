@@ -2,13 +2,10 @@ pipeline {
     agent any
     
     parameters {
-        gitParameter(
+        string(
             name: 'BRANCH',
-            type: 'PT_BRANCH',
-            branchFilter: 'origin/(.*)',
             defaultValue: 'main',
-            description: 'Select branch to deploy from',
-            selectedValue: 'DEFAULT'
+            description: 'Git branch to deploy from'
         )
         choice(
             name: 'COMMAND',
@@ -28,12 +25,12 @@ pipeline {
         string(
             name: 'VERSION_OR_FILE',
             defaultValue: 'latest',
-            description: 'Version (e.g., 24092025) or specific file path (e.g., db/mongodb/weekly_release/24092025/testing.yaml)'
+            description: 'Version or file path'
         )
         booleanParam(
             name: 'DRY_RUN',
             defaultValue: false,
-            description: 'Run status only (even if update is selected)'
+            description: 'Run status only'
         )
     }
     
@@ -47,18 +44,10 @@ pipeline {
             steps {
                 script {
                     echo "🔄 Checking out branch: ${params.BRANCH}"
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: params.BRANCH]],
-                        userRemoteConfigs: [[
-                            url: scm.userRemoteConfigs[0].url,
-                            credentialsId: scm.userRemoteConfigs[0].credentialsId
-                        ]]
-                    ])
+                    git branch: params.BRANCH, url: 'https://github.com/praveenchandhar/liquibase-dbac.git'
                 }
-                
                 echo "✅ Repository checked out successfully"
-                sh 'git log --oneline -5'
+                sh 'ls -la'
             }
         }
         
@@ -66,11 +55,30 @@ pipeline {
             steps {
                 script {
                     echo "🔧 Setting up Liquibase dependencies..."
-                    sh 'chmod +x scripts/setup-dependencies.sh'
-                    sh './scripts/setup-dependencies.sh'
+                    
+                    // Check if setup script exists
+                    if (fileExists('scripts/setup-dependencies.sh')) {
+                        sh 'chmod +x scripts/setup-dependencies.sh'
+                        sh './scripts/setup-dependencies.sh'
+                    } else {
+                        echo "⚠️  setup-dependencies.sh not found, creating lib directory manually"
+                        sh 'mkdir -p lib'
+                        // Download essential JARs manually
+                        sh '''
+                            cd lib
+                            curl -L -O "https://github.com/liquibase/liquibase/releases/download/v4.24.0/liquibase-core-4.24.0.jar" || echo "Failed to download liquibase-core"
+                            curl -L -O "https://github.com/liquibase/liquibase-mongodb/releases/download/v4.24.0/liquibase-mongodb-4.24.0.jar" || echo "Failed to download liquibase-mongodb"
+                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.11.1/mongodb-driver-sync-4.11.1.jar" || echo "Failed to download mongodb-driver-sync"
+                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/bson/4.11.1/bson-4.11.1.jar" || echo "Failed to download bson"
+                            curl -L -O "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-core/4.11.1/mongodb-driver-core-4.11.1.jar" || echo "Failed to download mongodb-driver-core"
+                            curl -L -O "https://repo1.maven.org/maven2/info/picocli/picocli/4.6.3/picocli-4.6.3.jar" || echo "Failed to download picocli"
+                            curl -L -O "https://repo1.maven.org/maven2/org/yaml/snakeyaml/1.33/snakeyaml-1.33.jar" || echo "Failed to download snakeyaml"
+                            cd ..
+                        '''
+                    }
                     
                     echo "📦 Verifying JAR files:"
-                    sh 'ls -la lib/'
+                    sh 'ls -la lib/ || echo "lib directory not found"'
                 }
             }
         }
@@ -86,14 +94,8 @@ pipeline {
                     echo "Version/File: ${params.VERSION_OR_FILE}"
                     echo "Dry Run: ${params.DRY_RUN}"
                     
-                    // Determine if VERSION_OR_FILE is a file path or version
-                    if (params.VERSION_OR_FILE.contains('/')) {
-                        env.CHANGESET_FILE = params.VERSION_OR_FILE
-                        echo "📄 Using specific file: ${env.CHANGESET_FILE}"
-                    } else {
-                        env.VERSION = params.VERSION_OR_FILE
-                        echo "📅 Using version: ${env.VERSION}"
-                    }
+                    echo "📁 Repository contents:"
+                    sh 'find . -name "*.yaml" -type f | head -10 || echo "No YAML files found"'
                 }
             }
         }
@@ -108,10 +110,17 @@ pipeline {
                         echo "⚠️  DRY_RUN enabled: Running status instead of update"
                     }
                     
-                    sh """
-                        chmod +x scripts/run-liquibase.sh
-                        ./scripts/run-liquibase.sh ${actualCommand} ${params.DATABASE} "${params.VERSION_OR_FILE}"
-                    """
+                    // Check if run-liquibase.sh exists
+                    if (fileExists('scripts/run-liquibase.sh')) {
+                        sh 'chmod +x scripts/run-liquibase.sh'
+                        sh """
+                            ./scripts/run-liquibase.sh ${actualCommand} ${params.DATABASE} "${params.VERSION_OR_FILE}"
+                        """
+                    } else {
+                        echo "❌ scripts/run-liquibase.sh not found!"
+                        sh 'find . -name "*.sh" -type f || echo "No shell scripts found"'
+                        error("Required script not found")
+                    }
                 }
             }
         }
@@ -119,9 +128,22 @@ pipeline {
     
     post {
         always {
-            echo "🏁 Pipeline execution completed"
-            archiveArtifacts artifacts: 'db/**/*.yaml', allowEmptyArchive: true
-            archiveArtifacts artifacts: 'liquibase-output.sql', allowEmptyArchive: true
+            script {
+                echo "🏁 Pipeline execution completed"
+                
+                // Archive artifacts if they exist
+                try {
+                    archiveArtifacts artifacts: 'db/**/*.yaml', allowEmptyArchive: true
+                } catch (Exception e) {
+                    echo "⚠️  Could not archive YAML files: ${e.getMessage()}"
+                }
+                
+                try {
+                    archiveArtifacts artifacts: 'liquibase-output.sql', allowEmptyArchive: true
+                } catch (Exception e) {
+                    echo "⚠️  Could not archive liquibase-output.sql: ${e.getMessage()}"
+                }
+            }
         }
         
         success {
@@ -130,13 +152,6 @@ pipeline {
         
         failure {
             echo "❌ Pipeline failed!"
-        }
-        
-        cleanup {
-            cleanWs(cleanWhenNotBuilt: false,
-                    deleteDirs: true,
-                    disableDeferredWipeout: true,
-                    notFailBuild: true)
         }
     }
 }
