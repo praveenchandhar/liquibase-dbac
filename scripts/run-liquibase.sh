@@ -99,7 +99,12 @@ else
     fi
     
     # Convert to relative path from PROJECT_ROOT
-    CHANGESET_FILE=$(realpath --relative-to="$PROJECT_ROOT" "$CHANGESET_FILE")
+    if command -v realpath >/dev/null 2>&1; then
+        CHANGESET_FILE=$(realpath --relative-to="$PROJECT_ROOT" "$CHANGESET_FILE")
+    else
+        # Fallback for macOS/systems without realpath
+        CHANGESET_FILE=$(python3 -c "import os; print(os.path.relpath('$CHANGESET_FILE', '$PROJECT_ROOT'))")
+    fi
 fi
 
 print_status "Using changeset: $CHANGESET_FILE"
