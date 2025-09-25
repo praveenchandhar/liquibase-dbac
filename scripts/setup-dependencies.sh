@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Setup Dependencies Script for Jenkins and Local
+# Setup Dependencies Script - Fixed to match working code
 set -e
 
 echo "🔧 Setting up Liquibase dependencies..."
 
-# Create lib directory
-mkdir -p lib
-cd lib
+# Create liquibase-jars directory (NOT lib) to match working code
+mkdir -p liquibase-jars
+cd liquibase-jars
 
 # Clean up any existing JARs to avoid version conflicts
 echo "🧹 Cleaning up existing JARs to avoid conflicts..."
@@ -20,7 +20,6 @@ download_if_missing() {
     
     if [ ! -f "$file" ]; then
         echo "📥 Downloading $file..."
-        # Try curl first, then wget as fallback
         if command -v curl >/dev/null 2>&1; then
             curl -L -f -o "$file" "$url" || {
                 echo "❌ Failed to download $file with curl"
@@ -41,7 +40,7 @@ download_if_missing() {
     fi
 }
 
-# Download ONLY ONE VERSION of each JAR (compatible versions)
+# Download SAME versions as working code
 download_if_missing "liquibase-core-4.20.0.jar" "https://repo1.maven.org/maven2/org/liquibase/liquibase-core/4.20.0/liquibase-core-4.20.0.jar"
 download_if_missing "liquibase-mongodb-4.20.0.jar" "https://repo1.maven.org/maven2/org/liquibase/ext/liquibase-mongodb/4.20.0/liquibase-mongodb-4.20.0.jar"
 download_if_missing "mongodb-driver-sync-4.8.2.jar" "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.8.2/mongodb-driver-sync-4.8.2.jar"
