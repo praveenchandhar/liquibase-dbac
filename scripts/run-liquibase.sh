@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Liquibase Runner Script for YAML Changesets (Jenkins Compatible)
+# Liquibase Runner Script for YAML Changesets
 set -e
 
 # Colors for output
@@ -14,8 +14,8 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# MongoDB connection base - use environment variable or default
-MONGO_BASE="${MONGO_CONNECTION_BASE:-mongodb+srv://praveenchandharts:kixIUsDWGd3n6w5S@praveen-mongodb-github.lhhwdqa.mongodb.net}"
+# MongoDB connection base
+MONGO_BASE="mongodb+srv://praveenchandharts:kixIUsDWGd3n6w5S@praveen-mongodb-github.lhhwdqa.mongodb.net"
 
 # Valid databases
 VALID_DATABASES="sample_mflix liquibase_test liquibase_test_new"
@@ -27,7 +27,7 @@ print_error() { echo -e "${RED}❌ $1${NC}"; }
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
 usage() {
-    echo "Usage: $0 <command> <database> [version_or_file_path] [environment]"
+    echo "Usage: $0 <command> <database> [version] [environment]"
     echo ""
     echo "Commands:"
     echo "  status  - Check changeset status"
@@ -37,10 +37,9 @@ usage() {
     echo "  sample_mflix, liquibase_test, liquibase_test_new"
     echo ""
     echo "Examples:"
-    echo "  $0 status sample_mflix                                      # Latest changeset status"
-    echo "  $0 update sample_mflix 24092025                            # Specific version"
-    echo "  $0 update sample_mflix db/mongodb/weekly_release/24092025/testing.yaml  # Specific file"
-    echo "  $0 update sample_mflix latest                              # Latest changeset"
+    echo "  $0 status sample_mflix                    # Latest changeset status"
+    echo "  $0 update sample_mflix 24092025          # Specific version"
+    echo "  $0 update sample_mflix latest            # Latest changeset"
     exit 1
 }
 
@@ -73,94 +72,78 @@ print_info "Database: $DATABASE"
 print_info "Version/File: $VERSION_OR_FILE"
 print_info "Environment: $ENVIRONMENT"
 
-# Change to project root first
-cd "$PROJECT_ROOT"
-
-# Determine changeset file
+# Find changeset file
 if [[ "$VERSION_OR_FILE" == *.yaml ]]; then
-    # Direct file path provided
+    print_info "Using direct file path: $VERSION_OR_FILE"
     CHANGESET_FILE="$VERSION_OR_FILE"
-    print_info "Using direct file path: $CHANGESET_FILE"
 else
-    # Version provided, find the file
-    CHANGESET_DIR="db/mongodb/$ENVIRONMENT"
+    CHANGESET_DIR="$PROJECT_ROOT/db/mongodb/$ENVIRONMENT"
     
     if [ ! -d "$CHANGESET_DIR" ]; then
         print_error "Changeset directory not found: $CHANGESET_DIR"
         exit 1
     fi
-    
-    # Find YAML files (relative paths)
+
+    # Find YAML files
     if [ "$VERSION_OR_FILE" = "latest" ]; then
         CHANGESET_FILE=$(find "$CHANGESET_DIR" -name "*.yaml" -type f | sort | tail -1)
     else
         CHANGESET_FILE=$(find "$CHANGESET_DIR" -path "*$VERSION_OR_FILE*" -name "*.yaml" -type f | head -1)
     fi
-    
+
     if [ -z "$CHANGESET_FILE" ]; then
         print_error "No changeset file found for version: $VERSION_OR_FILE"
         print_info "Available changesets:"
         find "$CHANGESET_DIR" -name "*.yaml" -type f | sort
         exit 1
     fi
+    
+    # Convert to relative path from PROJECT_ROOT
+    CHANGESET_FILE=$(realpath --relative-to="$PROJECT_ROOT" "$CHANGESET_FILE")
 fi
 
 print_status "Using changeset: $CHANGESET_FILE"
 
-# Create dynamic properties file (using relative paths)
-PROPS_FILE="liquibase-temp.properties"
+# Move to project root directory for relative paths
+cd "$PROJECT_ROOT"
+
+# MongoDB connection string
 MONGO_URL="${MONGO_BASE}/${DATABASE}?retryWrites=true&w=majority&tls=true"
-
-cat > "$PROPS_FILE" << EOF
-# Dynamic Liquibase Properties for MongoDB
-url=$MONGO_URL
-changeLogFile=$CHANGESET_FILE
-contexts=$DATABASE
-logLevel=INFO
-classpath=lib/liquibase-core-4.24.0.jar:lib/liquibase-mongodb-4.24.0.jar:lib/mongodb-driver-sync-4.11.1.jar:lib/bson-4.11.1.jar:lib/mongodb-driver-core-4.11.1.jar:lib/picocli-4.6.3.jar:lib/snakeyaml-1.33.jar
-EOF
-
-print_info "MongoDB URL: ${MONGO_BASE}/${DATABASE}?..."
+print_info "MongoDB URL: ****/${DATABASE}?..."
 print_info "Context: $DATABASE"
 print_info "Working directory: $(pwd)"
 print_info "Changeset path: $CHANGESET_FILE"
 
-# Verify file exists
-if [ ! -f "$CHANGESET_FILE" ]; then
-    print_error "Changeset file does not exist: $CHANGESET_FILE"
-    print_info "Current directory contents:"
-    ls -la
-    exit 1
-fi
-
-# Preview changeset
+# Show changeset preview
 print_info "Changeset preview:"
 echo "===================="
-head -20 "$CHANGESET_FILE"
+head -20 "$CHANGESET_FILE" || echo "Could not read file"
 echo "===================="
 
-# Execute Liquibase using the WORKING approach
-print_info "Executing Liquibase $COMMAND using properties file approach..."
+# Execute Liquibase with proper Java module arguments
+print_info "Executing Liquibase $COMMAND using JAR-based approach with module fixes..."
 
-# Use environment variable for Java options if available
-JAVA_OPTS="${JAVA_OPTS:---add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED}"
-
-java $JAVA_OPTS \
+# **CRITICAL FIX: Use Java module arguments to handle MongoDB driver properly**
+java \
+    --add-opens java.base/java.lang=ALL-UNNAMED \
+    --add-opens java.base/java.util=ALL-UNNAMED \
+    --add-opens java.sql/java.sql=ALL-UNNAMED \
     -cp "lib/*" \
     liquibase.integration.commandline.Main \
-    --defaultsFile="$PROPS_FILE" \
+    --url="$MONGO_URL" \
+    --changeLogFile="$CHANGESET_FILE" \
+    --contexts="$DATABASE" \
+    --logLevel="INFO" \
     "$COMMAND"
 
-LIQUIBASE_EXIT_CODE=$?
+exit_code=$?
 
-# Cleanup
-rm -f "$PROPS_FILE"
+print_info "Liquibase execution completed with exit code: $exit_code"
 
-if [ $LIQUIBASE_EXIT_CODE -eq 0 ]; then
+if [ $exit_code -eq 0 ]; then
     print_status "Liquibase $COMMAND completed successfully!"
 else
-    print_error "Liquibase $COMMAND failed!"
-    exit 1
+    print_error "Liquibase $COMMAND failed with exit code: $exit_code"
 fi
 
-print_status "Operation completed!"
+exit $exit_code
