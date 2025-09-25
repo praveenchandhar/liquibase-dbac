@@ -156,11 +156,21 @@ echo "===================="
 # Try multiple approaches for maximum compatibility
 print_info "Executing Liquibase $COMMAND using enhanced JAR approach..."
 
-# Approach 1: Java 21 compatible with explicit driver class
-print_info "Trying Approach 1: Direct Java 21 with wildcard classpath..."
+# Approach 1: Completely disable modules and force compatibility
+print_info "Trying Approach 1: Complete module system bypass..."
 java \
-    --add-opens java.base/java.lang=ALL-UNNAMED \
-    --add-opens java.sql/java.sql=ALL-UNNAMED \
+    --add-opens=java.base/java.lang=ALL-UNNAMED \
+    --add-opens=java.base/java.util=ALL-UNNAMED \
+    --add-opens=java.base/java.net=ALL-UNNAMED \
+    --add-opens=java.base/java.io=ALL-UNNAMED \
+    --add-opens=java.sql/java.sql=ALL-UNNAMED \
+    --add-opens=java.logging/java.util.logging=ALL-UNNAMED \
+    --add-opens=java.desktop/java.awt=ALL-UNNAMED \
+    --add-exports=java.base/sun.nio.ch=ALL-UNNAMED \
+    --add-exports=java.base/sun.security.util=ALL-UNNAMED \
+    --add-exports=java.sql/java.sql=ALL-UNNAMED \
+    -Djdk.module.main.class=liquibase.integration.commandline.Main \
+    -Djava.system.class.loader=java.lang.ClassLoader \
     -cp "lib/*" \
     liquibase.integration.commandline.Main \
     --driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
@@ -172,16 +182,17 @@ java \
 
 exit_code=$?
 
-# If Approach 1 fails, try Approach 2
+# If Approach 1 fails, try Approach 2: Use older Java compatibility mode
 if [ $exit_code -ne 0 ]; then
-    print_warning "Approach 1 failed, trying Approach 2: Simplified Java 21 approach..."
+    print_warning "Approach 1 failed, trying Approach 2: Java 8 compatibility mode..."
     
     java \
-        --add-opens java.base/java.lang=ALL-UNNAMED \
-        --add-opens java.sql/java.sql=ALL-UNNAMED \
+        -Djava.security.manager=allow \
+        --add-opens=java.base/java.lang=ALL-UNNAMED \
+        --add-opens=java.sql/java.sql=ALL-UNNAMED \
+        -Xbootclasspath/a:lib/liquibase-mongodb-4.20.0.jar \
         -cp "lib/*" \
         liquibase.integration.commandline.Main \
-        --driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
         --url="$MONGO_URL" \
         --changeLogFile="$CHANGESET_FILE" \
         --contexts="$DATABASE" \
@@ -191,32 +202,22 @@ if [ $exit_code -ne 0 ]; then
     exit_code=$?
 fi
 
-# If Approach 2 fails, try Approach 3
+# If Approach 2 fails, try Approach 3: Direct execution without driver specification
 if [ $exit_code -ne 0 ]; then
-    print_warning "Approach 2 failed, trying Approach 3: Properties file approach..."
-    
-    # Create temporary properties file
-    cat > liquibase-temp.properties << EOF
-url=$MONGO_URL
-changeLogFile=$CHANGESET_FILE
-contexts=$DATABASE
-logLevel=INFO
-driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase
-classpath=lib/*
-EOF
+    print_warning "Approach 2 failed, trying Approach 3: URL-based detection..."
     
     java \
-        --add-opens java.base/java.lang=ALL-UNNAMED \
-        --add-opens java.sql/java.sql=ALL-UNNAMED \
+        --add-opens=java.base/java.lang=ALL-UNNAMED \
+        --add-opens=java.sql/java.sql=ALL-UNNAMED \
         -cp "lib/*" \
         liquibase.integration.commandline.Main \
-        --defaultsFile=liquibase-temp.properties \
+        --url="$MONGO_URL" \
+        --changeLogFile="$CHANGESET_FILE" \
+        --contexts="$DATABASE" \
+        --logLevel="INFO" \
         "$COMMAND"
     
     exit_code=$?
-    
-    # Cleanup
-    rm -f liquibase-temp.properties
 fi
 
 print_info "Liquibase execution completed with exit code: $exit_code"
@@ -228,7 +229,8 @@ else
     
     # Additional debugging info
     print_info "Additional debugging information:"
-    print_info "Java classpath: lib/*"
+    print_info "Java version: Java 21 (may have module compatibility issues)"
+    print_info "Recommendation: Consider using Java 11 or 17 for better Liquibase compatibility"
     print_info "MongoDB URL format: mongodb+srv://.../${DATABASE}?..."
     print_info "Changeset file exists: $(test -f "$CHANGESET_FILE" && echo "YES" || echo "NO")"
     print_info "Lib directory contents:"
