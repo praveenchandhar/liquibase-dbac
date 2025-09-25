@@ -68,7 +68,14 @@ echo "   Changeset: $changeset_file"
 echo "   JAR Directory: $JARS_DIR"
 
 # Execute EXACTLY like working code - no module arguments!
-java -cp "$CLASSPATH" liquibase.integration.commandline.Main \
+java \
+    --add-opens=java.base/java.lang=ALL-UNNAMED \
+    --add-opens=java.sql/java.sql=ALL-UNNAMED \
+    --add-exports=java.base/sun.nio.ch=ALL-UNNAMED \
+    --add-exports=java.sql/java.sql=ALL-UNNAMED \
+    -Djava.security.manager=allow \
+    -cp "$CLASSPATH" \
+    liquibase.integration.commandline.Main \
     --url="${MONGO_CONNECTION_BASE}/${database}?retryWrites=true&w=majority&tls=true" \
     --changeLogFile="$changeset_file" \
     --contexts="$context" \
