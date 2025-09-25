@@ -157,17 +157,10 @@ echo "===================="
 print_info "Executing Liquibase $COMMAND using enhanced JAR approach..."
 
 # Approach 1: Java 21 compatible with explicit driver class
-print_info "Trying Approach 1: Java 21 compatible with explicit driver..."
+print_info "Trying Approach 1: Direct Java 21 with wildcard classpath..."
 java \
     --add-opens java.base/java.lang=ALL-UNNAMED \
-    --add-opens java.base/java.util=ALL-UNNAMED \
-    --add-opens java.base/java.net=ALL-UNNAMED \
-    --add-opens java.base/java.io=ALL-UNNAMED \
     --add-opens java.sql/java.sql=ALL-UNNAMED \
-    --add-opens java.logging/java.util.logging=ALL-UNNAMED \
-    --add-exports java.base/sun.nio.ch=ALL-UNNAMED \
-    --add-exports java.base/sun.security.util=ALL-UNNAMED \
-    -Dliquibase.databaseClass=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
     -cp "lib/*" \
     liquibase.integration.commandline.Main \
     --driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
