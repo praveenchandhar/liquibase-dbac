@@ -125,14 +125,22 @@ echo "===================="
 head -20 "$CHANGESET_FILE" || echo "Could not read file"
 echo "===================="
 
-# Execute Liquibase with proper Java module arguments
-print_info "Executing Liquibase $COMMAND using JAR-based approach with module fixes..."
+# Execute Liquibase with COMPREHENSIVE Java module arguments
+print_info "Executing Liquibase $COMMAND using enhanced JAR-based approach with comprehensive module fixes..."
 
-# **CRITICAL FIX: Use Java module arguments to handle MongoDB driver properly**
+# **ENHANCED FIX: More comprehensive Java module arguments**
 java \
+    --illegal-access=permit \
     --add-opens java.base/java.lang=ALL-UNNAMED \
     --add-opens java.base/java.util=ALL-UNNAMED \
+    --add-opens java.base/java.net=ALL-UNNAMED \
+    --add-opens java.base/java.io=ALL-UNNAMED \
     --add-opens java.sql/java.sql=ALL-UNNAMED \
+    --add-opens java.logging/java.util.logging=ALL-UNNAMED \
+    --add-exports java.base/sun.nio.ch=ALL-UNNAMED \
+    --add-exports java.base/sun.security.util=ALL-UNNAMED \
+    -Djava.system.class.loader=liquibase.integration.commandline.LiquibaseCommandLineClassLoader \
+    -Dliquibase.databaseClass=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
     -cp "lib/*" \
     liquibase.integration.commandline.Main \
     --url="$MONGO_URL" \
@@ -149,6 +157,29 @@ if [ $exit_code -eq 0 ]; then
     print_status "Liquibase $COMMAND completed successfully!"
 else
     print_error "Liquibase $COMMAND failed with exit code: $exit_code"
+    
+    # If enhanced approach fails, try alternative approach
+    print_warning "Trying alternative approach without module system..."
+    
+    # Alternative: Try running with older Java compatibility
+    java \
+        -Djava.system.class.loader=liquibase.integration.commandline.LiquibaseCommandLineClassLoader \
+        -Dliquibase.databaseClass=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
+        -cp "lib/*" \
+        liquibase.integration.commandline.Main \
+        --url="$MONGO_URL" \
+        --changeLogFile="$CHANGESET_FILE" \
+        --contexts="$DATABASE" \
+        --logLevel="INFO" \
+        "$COMMAND"
+    
+    exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        print_status "Alternative approach succeeded!"
+    else
+        print_error "Both approaches failed. Check Liquibase and MongoDB extension compatibility."
+    fi
 fi
 
 exit $exit_code
