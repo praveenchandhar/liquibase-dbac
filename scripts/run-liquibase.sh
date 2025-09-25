@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Liquibase Runner Script for YAML Changesets
+# Docker-based Liquibase Runner Script
 set -e
 
 # Colors for output
@@ -66,7 +66,7 @@ if [[ ! " $VALID_DATABASES " =~ " $DATABASE " ]]; then
     exit 1
 fi
 
-print_info "Starting Liquibase execution..."
+print_info "Starting Docker-based Liquibase execution..."
 print_info "Command: $COMMAND"
 print_info "Database: $DATABASE"
 print_info "Version/File: $VERSION_OR_FILE"
@@ -125,61 +125,43 @@ echo "===================="
 head -20 "$CHANGESET_FILE" || echo "Could not read file"
 echo "===================="
 
-# Execute Liquibase with COMPREHENSIVE Java module arguments
-print_info "Executing Liquibase $COMMAND using enhanced JAR-based approach with comprehensive module fixes..."
+# Execute Liquibase using Docker
+print_info "Executing Liquibase $COMMAND using Docker (no Java module issues)..."
 
-# **ENHANCED FIX: More comprehensive Java module arguments**
-java \
-    --illegal-access=permit \
-    --add-opens java.base/java.lang=ALL-UNNAMED \
-    --add-opens java.base/java.util=ALL-UNNAMED \
-    --add-opens java.base/java.net=ALL-UNNAMED \
-    --add-opens java.base/java.io=ALL-UNNAMED \
-    --add-opens java.sql/java.sql=ALL-UNNAMED \
-    --add-opens java.logging/java.util.logging=ALL-UNNAMED \
-    --add-exports java.base/sun.nio.ch=ALL-UNNAMED \
-    --add-exports java.base/sun.security.util=ALL-UNNAMED \
-    -Djava.system.class.loader=liquibase.integration.commandline.LiquibaseCommandLineClassLoader \
-    -Dliquibase.databaseClass=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
-    -cp "lib/*" \
-    liquibase.integration.commandline.Main \
-    --url="$MONGO_URL" \
-    --changeLogFile="$CHANGESET_FILE" \
-    --contexts="$DATABASE" \
-    --logLevel="INFO" \
-    "$COMMAND"
+# Create a temporary Docker Compose file for Liquibase
+cat > liquibase-temp.yml << EOF
+version: '3.8'
+services:
+  liquibase:
+    image: liquibase/liquibase:4.20.0
+    volumes:
+      - .:/liquibase/changelog
+    working_dir: /liquibase/changelog
+    environment:
+      - LIQUIBASE_COMMAND_URL=$MONGO_URL
+      - LIQUIBASE_COMMAND_USERNAME=
+      - LIQUIBASE_COMMAND_PASSWORD=
+    command: >
+      --changeLogFile=$CHANGESET_FILE
+      --contexts=$DATABASE
+      --logLevel=INFO
+      $COMMAND
+EOF
+
+# Run Liquibase with Docker Compose
+docker-compose -f liquibase-temp.yml run --rm liquibase
 
 exit_code=$?
 
-print_info "Liquibase execution completed with exit code: $exit_code"
+# Cleanup
+rm -f liquibase-temp.yml
+
+print_info "Docker Liquibase execution completed with exit code: $exit_code"
 
 if [ $exit_code -eq 0 ]; then
     print_status "Liquibase $COMMAND completed successfully!"
 else
     print_error "Liquibase $COMMAND failed with exit code: $exit_code"
-    
-    # If enhanced approach fails, try alternative approach
-    print_warning "Trying alternative approach without module system..."
-    
-    # Alternative: Try running with older Java compatibility
-    java \
-        -Djava.system.class.loader=liquibase.integration.commandline.LiquibaseCommandLineClassLoader \
-        -Dliquibase.databaseClass=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
-        -cp "lib/*" \
-        liquibase.integration.commandline.Main \
-        --url="$MONGO_URL" \
-        --changeLogFile="$CHANGESET_FILE" \
-        --contexts="$DATABASE" \
-        --logLevel="INFO" \
-        "$COMMAND"
-    
-    exit_code=$?
-    
-    if [ $exit_code -eq 0 ]; then
-        print_status "Alternative approach succeeded!"
-    else
-        print_error "Both approaches failed. Check Liquibase and MongoDB extension compatibility."
-    fi
 fi
 
 exit $exit_code
