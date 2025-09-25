@@ -1,0 +1,18 @@
+# Liquibase
+lib/
+*.jar
+liquibase-temp.properties
+liquibase-output.sql
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
