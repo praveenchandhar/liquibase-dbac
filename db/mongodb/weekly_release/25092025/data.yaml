@@ -1,0 +1,28 @@
+databaseChangeLog:
+  - changeSet:
+      id: "24092025.1"
+      author: "praveenchandhar"
+      context: "sample_mflix"
+      comment: "Insert sample users into users collection"
+      changes:
+        - insertMany:
+            collectionName: "users"
+            documents: |
+              [
+                {
+                  "name": "John Doe",
+                  "email": "john.doe@example.com",
+                  "age": 30,
+                  "role": "admin",
+                  "createdAt": "2024-12-15T10:00:00Z",
+                  "isActive": true
+                },
+                {
+                  "name": "Jane Smith", 
+                  "email": "jane.smith@example.com",
+                  "age": 25,
+                  "role": "user",
+                  "createdAt": "2024-12-15T10:00:00Z",
+                  "isActive": true
+                }
+              ]
