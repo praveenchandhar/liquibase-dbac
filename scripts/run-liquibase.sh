@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Liquibase Runner Script for YAML Changesets
+# Liquibase Runner Script for YAML Changesets (Based on Working Jenkins Approach)
 set -e
 
 # Colors for output
@@ -25,6 +25,16 @@ print_status() { echo -e "${GREEN}✅ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_error() { echo -e "${RED}❌ $1${NC}"; }
 print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
+
+# Database context function (simplified approach)
+get_database_context() {
+    case "$1" in
+        "liquibase_test") echo "liquibase_test" ;;
+        "sample_mflix") echo "sample_mflix" ;;
+        "liquibase_test_new") echo "liquibase_test_new" ;;
+        *) echo "sample_mflix" ;;  # default
+    esac
+}
 
 usage() {
     echo "Usage: $0 <command> <database> [version] [environment]"
@@ -72,13 +82,9 @@ print_info "Database: $DATABASE"
 print_info "Version/File: $VERSION_OR_FILE"
 print_info "Environment: $ENVIRONMENT"
 
-# Debug environment
-print_info "Java version:"
-java -version 2>&1 | head -3
-
-print_info "Working directory: $(pwd)"
-print_info "Script directory: $SCRIPT_DIR"
-print_info "Project root: $PROJECT_ROOT"
+# Get database context
+CONTEXT=$(get_database_context "$DATABASE")
+print_info "Database context: $CONTEXT"
 
 # Find changeset file
 if [[ "$VERSION_OR_FILE" == *.yaml ]]; then
@@ -105,136 +111,62 @@ else
         find "$CHANGESET_DIR" -name "*.yaml" -type f | sort
         exit 1
     fi
-    
-    # Convert to relative path from PROJECT_ROOT
-    if command -v realpath >/dev/null 2>&1; then
-        CHANGESET_FILE=$(realpath --relative-to="$PROJECT_ROOT" "$CHANGESET_FILE")
-    else
-        # Fallback for macOS/systems without realpath
-        CHANGESET_FILE=$(python3 -c "import os; print(os.path.relpath('$CHANGESET_FILE', '$PROJECT_ROOT'))")
-    fi
 fi
 
 print_status "Using changeset: $CHANGESET_FILE"
 
-# Move to project root directory for relative paths
+# Move to project root for relative paths
 cd "$PROJECT_ROOT"
 
-# Check lib directory and JARs
-LIB_DIR="$PROJECT_ROOT/lib"
-print_info "Checking lib directory: $LIB_DIR"
-
-if [ ! -d "$LIB_DIR" ]; then
-    print_error "lib directory not found: $LIB_DIR"
+# Setup CLASSPATH - try different possible locations (like working version)
+if [ -d "lib" ]; then
+    JARS_DIR="lib"
+elif [ -d "$HOME/liquibase-jars" ]; then
+    JARS_DIR="$HOME/liquibase-jars"
+elif [ -d "$(pwd)/liquibase-jars" ]; then
+    JARS_DIR="$(pwd)/liquibase-jars"
+elif [ -d "${WORKSPACE}/liquibase-jars" ]; then
+    JARS_DIR="${WORKSPACE}/liquibase-jars"
+else
+    print_error "Could not find JAR directory (lib or liquibase-jars)"
     exit 1
 fi
 
-JAR_COUNT=$(find "$LIB_DIR" -name "*.jar" | wc -l)
-print_info "JAR files found: $JAR_COUNT"
+# Build classpath exactly like working version
+CLASSPATH=$(find "$JARS_DIR" -name "*.jar" | tr '\n' ':')
+export CLASSPATH
 
-if [ "$JAR_COUNT" -eq 0 ]; then
-    print_error "No JAR files found in $LIB_DIR"
+print_info "JAR directory: $JARS_DIR"
+print_info "JAR count: $(find "$JARS_DIR" -name "*.jar" | wc -l | tr -d ' ')"
+
+# Validate changeset file exists
+if [ ! -f "$CHANGESET_FILE" ]; then
+    print_error "Changeset file not found: $CHANGESET_FILE"
     exit 1
 fi
-
-# List JAR files for debugging
-print_info "Available JARs:"
-find "$LIB_DIR" -name "*.jar" -exec basename {} \; | sort
 
 # MongoDB connection string
 MONGO_URL="${MONGO_BASE}/${DATABASE}?retryWrites=true&w=majority&tls=true"
+
+print_info "Executing Liquibase using working Jenkins approach..."
 print_info "MongoDB URL: ****/${DATABASE}?..."
-print_info "Context: $DATABASE"
-print_info "Changeset path: $CHANGESET_FILE"
+print_info "Context: $CONTEXT"
+print_info "Changeset: $CHANGESET_FILE"
 
-# Show changeset preview
-print_info "Changeset preview:"
-echo "===================="
-head -20 "$CHANGESET_FILE" || echo "Could not read file"
-echo "===================="
-
-# Try multiple approaches for maximum compatibility
-print_info "Executing Liquibase $COMMAND using enhanced JAR approach..."
-
-# Approach 1: Completely disable modules and force compatibility
-print_info "Trying Approach 1: Complete module system bypass..."
-java \
-    --add-opens=java.base/java.lang=ALL-UNNAMED \
-    --add-opens=java.base/java.util=ALL-UNNAMED \
-    --add-opens=java.base/java.net=ALL-UNNAMED \
-    --add-opens=java.base/java.io=ALL-UNNAMED \
-    --add-opens=java.sql/java.sql=ALL-UNNAMED \
-    --add-opens=java.logging/java.util.logging=ALL-UNNAMED \
-    --add-opens=java.desktop/java.awt=ALL-UNNAMED \
-    --add-exports=java.base/sun.nio.ch=ALL-UNNAMED \
-    --add-exports=java.base/sun.security.util=ALL-UNNAMED \
-    --add-exports=java.sql/java.sql=ALL-UNNAMED \
-    -Djdk.module.main.class=liquibase.integration.commandline.Main \
-    -Djava.system.class.loader=java.lang.ClassLoader \
-    -cp "lib/*" \
-    liquibase.integration.commandline.Main \
-    --driver=liquibase.ext.mongodb.database.MongoLiquibaseDatabase \
+# Execute Liquibase using the EXACT working approach (no complex module args)
+java -cp "$CLASSPATH" liquibase.integration.commandline.Main \
     --url="$MONGO_URL" \
     --changeLogFile="$CHANGESET_FILE" \
-    --contexts="$DATABASE" \
-    --logLevel="INFO" \
+    --contexts="$CONTEXT" \
+    --logLevel="info" \
     "$COMMAND"
 
 exit_code=$?
 
-# If Approach 1 fails, try Approach 2: Use older Java compatibility mode
-if [ $exit_code -ne 0 ]; then
-    print_warning "Approach 1 failed, trying Approach 2: Java 8 compatibility mode..."
-    
-    java \
-        -Djava.security.manager=allow \
-        --add-opens=java.base/java.lang=ALL-UNNAMED \
-        --add-opens=java.sql/java.sql=ALL-UNNAMED \
-        -Xbootclasspath/a:lib/liquibase-mongodb-4.20.0.jar \
-        -cp "lib/*" \
-        liquibase.integration.commandline.Main \
-        --url="$MONGO_URL" \
-        --changeLogFile="$CHANGESET_FILE" \
-        --contexts="$DATABASE" \
-        --logLevel="INFO" \
-        "$COMMAND"
-    
-    exit_code=$?
-fi
-
-# If Approach 2 fails, try Approach 3: Direct execution without driver specification
-if [ $exit_code -ne 0 ]; then
-    print_warning "Approach 2 failed, trying Approach 3: URL-based detection..."
-    
-    java \
-        --add-opens=java.base/java.lang=ALL-UNNAMED \
-        --add-opens=java.sql/java.sql=ALL-UNNAMED \
-        -cp "lib/*" \
-        liquibase.integration.commandline.Main \
-        --url="$MONGO_URL" \
-        --changeLogFile="$CHANGESET_FILE" \
-        --contexts="$DATABASE" \
-        --logLevel="INFO" \
-        "$COMMAND"
-    
-    exit_code=$?
-fi
-
-print_info "Liquibase execution completed with exit code: $exit_code"
-
 if [ $exit_code -eq 0 ]; then
     print_status "Liquibase $COMMAND completed successfully!"
 else
-    print_error "All approaches failed. Liquibase $COMMAND failed with exit code: $exit_code"
-    
-    # Additional debugging info
-    print_info "Additional debugging information:"
-    print_info "Java version: Java 21 (may have module compatibility issues)"
-    print_info "Recommendation: Consider using Java 11 or 17 for better Liquibase compatibility"
-    print_info "MongoDB URL format: mongodb+srv://.../${DATABASE}?..."
-    print_info "Changeset file exists: $(test -f "$CHANGESET_FILE" && echo "YES" || echo "NO")"
-    print_info "Lib directory contents:"
-    ls -la "$LIB_DIR" || echo "Cannot list lib directory"
+    print_error "Liquibase $COMMAND failed with exit code: $exit_code"
 fi
 
 exit $exit_code
