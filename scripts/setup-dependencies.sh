@@ -9,6 +9,10 @@ echo "🔧 Setting up Liquibase dependencies..."
 mkdir -p lib
 cd lib
 
+# Clean up any existing JARs to avoid version conflicts
+echo "🧹 Cleaning up existing JARs to avoid conflicts..."
+rm -f *.jar
+
 # Function to download with retries
 download_if_missing() {
     local file=$1
@@ -37,7 +41,7 @@ download_if_missing() {
     fi
 }
 
-# Download all required JARs (using compatible versions)
+# Download ONLY ONE VERSION of each JAR (compatible versions)
 download_if_missing "liquibase-core-4.20.0.jar" "https://repo1.maven.org/maven2/org/liquibase/liquibase-core/4.20.0/liquibase-core-4.20.0.jar"
 download_if_missing "liquibase-mongodb-4.20.0.jar" "https://repo1.maven.org/maven2/org/liquibase/ext/liquibase-mongodb/4.20.0/liquibase-mongodb-4.20.0.jar"
 download_if_missing "mongodb-driver-sync-4.8.2.jar" "https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.8.2/mongodb-driver-sync-4.8.2.jar"
@@ -51,4 +55,4 @@ echo "📦 JAR count: $(find . -name "*.jar" | wc -l | tr -d ' ')"
 
 # List all JARs for verification
 echo "📋 Downloaded JARs:"
-find . -name "*.jar" -exec basename {} \;
+find . -name "*.jar" -exec basename {} \; | sort
